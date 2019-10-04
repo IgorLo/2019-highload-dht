@@ -17,6 +17,7 @@
 package ru.mail.polis.dao;
 
 import org.jetbrains.annotations.NotNull;
+import ru.mail.polis.dao.igorlo.PersistentDAO;
 
 import java.io.File;
 import java.io.IOException;

@@ -1,4 +1,4 @@
-package ru.mail.polis.dao;
+package ru.mail.polis.dao.igorlo;
 
 import java.io.File;
 import java.io.IOException;

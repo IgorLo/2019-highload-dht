@@ -1,4 +1,4 @@
-package ru.mail.polis.dao;
+package ru.mail.polis.dao.igorlo;
 
 import java.io.File;
 import java.io.IOException;
@@ -13,6 +13,8 @@ import org.jetbrains.annotations.NotNull;
 
 import com.google.common.collect.Iterators;
 import ru.mail.polis.Record;
+import ru.mail.polis.dao.DAO;
+import ru.mail.polis.dao.Iters;
 
 import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
