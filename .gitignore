@@ -11,6 +11,9 @@
 !build.gradle.kts
 !.travis.yml
 !settings.gradle
+!*.lua
+!*.sh
+!*.svg
 
 # ...even if they are in subdirectories
 !*/
