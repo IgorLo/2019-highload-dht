@@ -16,11 +16,10 @@
 
 package ru.mail.polis.dao;
 
-import org.jetbrains.annotations.NotNull;
-import ru.mail.polis.dao.igorlo.PersistentDAO;
-
 import java.io.File;
 import java.io.IOException;
+
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Custom {@link DAO} factory.
@@ -28,7 +27,7 @@ import java.io.IOException;
  * @author Vadim Tsesko
  */
 public final class DAOFactory {
-    static final long MAX_HEAP = 128 * 1024 * 1024;
+    static final long MAX_HEAP = 256 * 1024 * 1024;
 
     private DAOFactory() {
         // Not instantiatable
@@ -54,6 +53,6 @@ public final class DAOFactory {
             throw new IllegalArgumentException("Path is not a directory: " + data);
         }
 
-        return new PersistentDAO(MAX_HEAP/5, data);
+        throw new IllegalStateException("Not implemented yet");
     }
 }
