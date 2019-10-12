@@ -1,185 +1,218 @@
 package ru.mail.polis.dao.igorlo;
 
-import java.io.Closeable;
-import java.io.File;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
 
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Allows convenient and easy access to previously stored data.
- */
-class SSTable implements Closeable {
-    private final int count;
-    private final int fileIndex;
-    private final FileChannel fc;
-    private final File file;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.LongBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+
+public final class SSTable implements Table {
+
+    @NotNull private final LongBuffer offsets;
+    @NotNull private final ByteBuffer rows;
+    private final long rowsNumber;
+    private final long serialNumber;
+    private final long sizeInBytes;
 
     /**
-     * Loads meta-data from saved file and provides access to rows stored in file.
+     * Constructs a new SSTable.
      *
-     * @param file previously saved file, for which table will be created.
+     * @param path the path of the file where data of SSTable is stored
+     * @param index the serial number of SStable
+     * @throws IOException if an I/O error occurs
+     * @throws IllegalArgumentException if serial number less than 0
      */
-    SSTable(@NotNull final File file) throws IOException {
-        this.file = file;
-        final String indexString = file.getName().substring(
-                PersistentDAO.PREFIX.length(),
-                file.getName().length() - PersistentDAO.SUFFIX.length()
-        );
-        this.fileIndex = Integer.parseInt(indexString);
-        this.fc = openRead(file);
-        final ByteBuffer countBB = ByteBuffer.allocate(Integer.BYTES);
-        fc.read(countBB, fc.size() - Integer.BYTES);
-        countBB.rewind();
-        this.count = countBB.getInt();
-    }
+    public SSTable(
+            @NotNull final Path path,
+            final long index) throws IOException, IllegalArgumentException {
+        if (index < 0) {
+            throw new IllegalArgumentException("Index must not be less than 0!");
+        }
+        this.serialNumber = index;
+        try (var fc = FileChannel.open(path, StandardOpenOption.READ)) {
+            this.sizeInBytes = fc.size();
+            final var mapped = fc.map(FileChannel.MapMode.READ_ONLY, 0, fc.size())
+                    .order(ByteOrder.BIG_ENDIAN);
+            this.rowsNumber = mapped.getLong(mapped.limit() - Long.BYTES);
 
-    private static FileChannel openRead(@NotNull final File file) throws IOException {
-        return FileChannel.open(file.toPath(), StandardOpenOption.READ);
+            final var offsetsBuffer = mapped.duplicate()
+                    .position((int) (mapped.limit() - Long.BYTES - Long.BYTES * rowsNumber))
+                    .limit(mapped.limit() - Long.BYTES);
+            this.offsets = offsetsBuffer.slice().asLongBuffer();
+
+            this.rows = mapped.asReadOnlyBuffer()
+                    .limit(offsetsBuffer.position())
+                    .slice();
+        }
     }
 
     @NotNull
-    Iterator<TableRow> iterator(@NotNull final ByteBuffer from) throws IOException {
-        return new Iterator<>() {
-            int index = getOffsetsIndex(from);
-
-            @Override
-            public boolean hasNext() {
-                return index < count;
-            }
-
-            @Override
-            public TableRow next() {
-                assert hasNext();
-                TableRow row = null;
-                try {
-                    row = getRowAt(index++);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                return row;
-            }
-        };
+    private ByteBuffer rowAt(final long offsetPosition) {
+        final long offset = offsets.get((int) offsetPosition);
+        final long rowSize = (offsetPosition == rowsNumber - 1)
+                ? rows.limit() - offset
+                : offsets.get((int) (offsetPosition + 1)) - offset;
+        return rows.asReadOnlyBuffer()
+                .position((int) offset)
+                .limit((int) (rowSize + offset))
+                .slice();
     }
 
-    private int getOffsetsIndex(@NotNull final ByteBuffer from) throws IOException {
-        int left = 0;
-        int right = count - 1;
-        while (left <= right) {
-            final int middle = left + (right - left) / 2;
-            final int resCmp = from.compareTo(getKeyAt(middle));
-            if (resCmp < 0) {
-                right = middle - 1;
-            } else if (resCmp > 0) {
-                left = middle + 1;
+    @NotNull
+    private ByteBuffer keyAt(@NotNull final ByteBuffer row) {
+        final var rowBuffer = row.asReadOnlyBuffer();
+        final int keySize = rowBuffer.getInt();
+        return rowBuffer.limit(keySize + Integer.BYTES)
+                .slice();
+    }
+
+    private long timestampAt(@NotNull final ByteBuffer row) {
+        final var rowBuffer = row.asReadOnlyBuffer();
+        final int keySize = rowBuffer.getInt();
+        return rowBuffer.position(keySize + Integer.BYTES)
+                .getLong();
+    }
+
+    @NotNull
+    private ByteBuffer valueAt(@NotNull final ByteBuffer row) {
+        final var rowBuffer = row.asReadOnlyBuffer();
+        final int keySize = rowBuffer.getInt();
+        return rowBuffer.position(keySize + Integer.BYTES + Long.BYTES * 2)
+                .slice();
+    }
+
+    @NotNull
+    private TableRow transform(final long offsetPosition) {
+        final var row = rowAt(offsetPosition);
+        final var key = keyAt(row);
+        final var timestamp = timestampAt(row);
+        final var value = timestamp < 0
+                ? Value.tombstone(-timestamp)
+                : Value.of(timestamp, valueAt(row));
+        return TableRow.of(serialNumber, key, value);
+    }
+
+    private long position(@NotNull final ByteBuffer key) {
+        long left = 0;
+        long right = rowsNumber - 1;
+        while(left <= right) {
+            final long mid = (left + right) >>> 1;
+            final int cmp = keyAt(rowAt(mid)).compareTo(key);
+            if (cmp < 0) {
+                left = mid + 1;
+            } else if (cmp > 0) {
+                right = mid - 1;
             } else {
-                return middle;
+                return mid;
             }
         }
         return left;
     }
 
-    private int getOffset(@NotNull final int i) throws IOException {
-        final ByteBuffer offsetBB = ByteBuffer.allocate(Integer.BYTES);
-        fc.read(offsetBB, fc.size() - Integer.BYTES - (long) Integer.BYTES * count + (long) Integer.BYTES * i);
-        offsetBB.rewind();
-        return offsetBB.getInt();
-    }
-
-    private ByteBuffer getKeyAt(@NotNull final int i) throws IOException {
-        assert 0 <= i && i < count;
-        final int offset = getOffset(i);
-        return readByteBuffer(offset);
-    }
-
-    private ByteBuffer readByteBuffer(@NotNull final int offset) throws IOException {
-        final ByteBuffer bufferSize = ByteBuffer.allocate(Integer.BYTES);
-        fc.read(bufferSize, offset);
-        bufferSize.rewind();
-        final ByteBuffer buffer = ByteBuffer.allocate(bufferSize.getInt());
-        fc.read(buffer, offset + Integer.BYTES);
-        buffer.rewind();
-        return buffer.slice();
-    }
-
-    private TableRow getRowAt(@NotNull final int i) throws IOException {
-        assert 0 <= i && i < count;
-        int offset = getOffset(i);
-
-        //Key
-        final ByteBuffer keyBB = readByteBuffer(offset);
-        offset += Integer.BYTES + keyBB.remaining();
-
-        //Status
-        final ByteBuffer statusBB = ByteBuffer.allocate(Integer.BYTES);
-        fc.read(statusBB, offset);
-        statusBB.rewind();
-        final int status = statusBB.getInt();
-        offset += Integer.BYTES;
-
-        if (status == PersistentDAO.DEAD) {
-            return TableRow.of(fileIndex, keyBB.slice(), PersistentDAO.TOMBSTONE, status);
-        } else {
-            //Value
-            final ByteBuffer valueBB = readByteBuffer(offset);
-            return TableRow.of(fileIndex, keyBB.slice(), valueBB.slice(), status);
-        }
-    }
-
-    static void writeToFile(@NotNull final File to,
-            @NotNull final Iterator<TableRow> rows) throws IOException {
-        try (FileChannel fileChannel = FileChannel.open(to.toPath(),
-                                                        StandardOpenOption.CREATE_NEW,
-                                                        StandardOpenOption.WRITE)) {
-            final List<Integer> offsets = new ArrayList<>();
-            int offset = 0;
-            while (rows.hasNext()) {
-                offsets.add(offset);
-                final TableRow row = rows.next();
-
-                //Key
-                offset += writeByteBuffer(fileChannel, row.getKey());
-
-                //Value
-                if (row.isDead()) {
-                    offset += fileChannel.write(fromInt(PersistentDAO.DEAD));
-                } else {
-                    offset += fileChannel.write(fromInt(PersistentDAO.ALIVE));
-                    offset += writeByteBuffer(fileChannel, row.getValue());
-                }
-            }
-            for (final Integer elemOffSets : offsets) {
-                fileChannel.write(fromInt(elemOffSets));
-            }
-            fileChannel.write(fromInt(offsets.size()));
-        }
-    }
-
-    private static ByteBuffer fromInt(@NotNull final int value) {
-        return ByteBuffer.allocate(Integer.BYTES).putInt(value).rewind();
-    }
-
-    private static int writeByteBuffer(@NotNull final FileChannel fileChannel, @NotNull final ByteBuffer buffer)
-            throws IOException {
-        int offset = 0;
-        offset += fileChannel.write(fromInt(buffer.remaining()));
-        offset += fileChannel.write(buffer);
-        return offset;
+    @NotNull
+    @Override
+    public Iterator<TableRow> iterator(@NotNull final ByteBuffer from) throws IOException {
+        return new SSTableIterator(from);
     }
 
     @Override
-    public void close() throws IOException {
-        fc.close();
+    public void upsert(
+            @NotNull final ByteBuffer key,
+            @NotNull final ByteBuffer value) throws IOException {
+        throw new UnsupportedOperationException();
     }
 
-    public void deleteFile() throws IOException {
-        Files.delete(file.toPath());
+    @Override
+    public void remove(@NotNull final ByteBuffer key) throws IOException {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public long sizeInBytes() {
+        return sizeInBytes;
+    }
+
+    @Override
+    public long serialNumber() {
+        return serialNumber;
+    }
+
+    private class SSTableIterator implements Iterator<TableRow> {
+        private long position;
+
+        SSTableIterator(@NotNull final ByteBuffer from) {
+            this.position = position(from);
+        }
+
+        @Override
+        public boolean hasNext() {
+            return position < rowsNumber;
+        }
+
+        @Override
+        public TableRow next() {
+            if(!hasNext()){
+                throw new NoSuchElementException();
+            }
+            final var row = transform(position);
+            position++;
+            return row;
+        }
+    }
+
+    /**
+     * Flush of data to disk as SSTable.
+     *
+     * @param flushedFile the path of the file to which the data is flushed
+     * @param rowsIterator the iterator to flush rows ({@link TableRow}
+     * @throws IOException if an I/O error occurs
+     */
+    public static void flush(
+            @NotNull final Path flushedFile,
+            @NotNull final Iterator<TableRow> rowsIterator) throws IOException {
+        long offset = 0L;
+        final var offsets = new ArrayList<Long>();
+        offsets.add(offset);
+        try (var fc = FileChannel.open(
+                flushedFile,
+                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+            while (rowsIterator.hasNext()) {
+                final var row = rowsIterator.next();
+                final var key = row.getKey();
+                final var value = row.getValue();
+                final var sizeRow = TableRow.getSizeOfFlushedRow(key, value.getData());
+                final var rowBuffer = ByteBuffer.allocate((int) sizeRow)
+                        .putInt(key.remaining())
+                        .put(key.duplicate())
+                        .putLong(value.getTimestamp());
+                if (!value.isDead() && row.getValue().getData().remaining() != 0) {
+                    final var data = row.getValue().getData();
+                    rowBuffer.putLong(data.remaining())
+                            .put(data.duplicate());
+                }
+                offset += sizeRow;
+                offsets.add(offset);
+                rowBuffer.flip();
+                fc.write(rowBuffer);
+            }
+            offsets.remove(offsets.size() - 1);
+            final var offsetsBuffer = ByteBuffer.allocate(
+                    offsets.size() * Long.BYTES + Long.BYTES);
+            for (final var anOffset: offsets) {
+                offsetsBuffer.putLong(anOffset);
+            }
+            offsetsBuffer.putLong(offsets.size())
+                    .flip();
+            fc.write(offsetsBuffer);
+        }
     }
 }

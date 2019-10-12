@@ -1,62 +1,58 @@
 package ru.mail.polis.dao.igorlo;
 
-import java.nio.ByteBuffer;
-
 import org.jetbrains.annotations.NotNull;
-import ru.mail.polis.Record;
+
+import java.nio.ByteBuffer;
+import java.util.Comparator;
 
 final class TableRow implements Comparable<TableRow> {
-    private final int index;
-    private final ByteBuffer key;
-    private final ByteBuffer value;
-    private final int status;
+    private final long index;
+    @NotNull private final ByteBuffer key;
+    @NotNull private final Value value;
 
-    private TableRow(@NotNull final int index,
-            @NotNull final ByteBuffer key,
-            @NotNull final ByteBuffer value,
-            @NotNull final int status) {
+    private static final Comparator<TableRow> COMPARATOR =
+            Comparator
+                    .comparing(TableRow::getKey)
+                    .thenComparing(TableRow::getValue)
+                    .thenComparing((r) -> -r.getIndex());
+
+    private TableRow(final long index,
+                @NotNull final ByteBuffer key,
+                @NotNull final Value value) {
         this.index = index;
         this.key = key;
         this.value = value;
-        this.status = status;
     }
 
-    public static TableRow of(@NotNull final int index,
-            @NotNull final ByteBuffer key,
-            @NotNull final ByteBuffer value,
-            @NotNull final int status) {
-        return new TableRow(index, key, value, status);
+    public static TableRow of(final long index,
+                         @NotNull final ByteBuffer key,
+                         @NotNull final Value value) {
+        return new TableRow(index, key, value);
     }
 
-    Record getRecord() {
-        if (isDead()) {
-            return Record.of(key, PersistentDAO.TOMBSTONE);
-        } else {
-            return Record.of(key, value);
-        }
-    }
-
-    boolean isDead() {
-        return status == PersistentDAO.DEAD;
-    }
-
-    ByteBuffer getKey() {
+    @NotNull
+    public ByteBuffer getKey() {
         return key.asReadOnlyBuffer();
     }
 
-    ByteBuffer getValue() {
-        return value.asReadOnlyBuffer();
+    @NotNull
+    public Value getValue() {
+        return value;
     }
 
-    int getIndex() {
+    public static long getSizeOfFlushedRow(
+            @NotNull final ByteBuffer key,
+            @NotNull final ByteBuffer value) {
+        return Integer.BYTES + key.remaining() + Long.BYTES
+                + (value.remaining() == 0 ? 0 : Long.BYTES + value.remaining());
+    }
+
+    private long getIndex() {
         return index;
     }
 
     @Override
-    public int compareTo(@NotNull final TableRow o) {
-        if (key.compareTo(o.getKey()) == 0) {
-            return -Integer.compare(index, o.getIndex());
-        }
-        return key.compareTo(o.getKey());
+    public int compareTo(@NotNull final TableRow row) {
+        return COMPARATOR.compare(this, row);
     }
 }
