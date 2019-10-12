@@ -78,7 +78,9 @@ public class MemoryTablePool implements Table, Closeable {
             throw new IllegalStateException("MemTablePool is already closed!");
         }
         setToFlush(key);
+        lock.writeLock().lock();
         current.upsert(key, value);
+        lock.writeLock().unlock();
     }
 
     @Override
@@ -87,7 +89,9 @@ public class MemoryTablePool implements Table, Closeable {
             throw new IllegalStateException("MemTablePool is already closed!");
         }
         setToFlush(key);
+        lock.writeLock().lock();
         current.remove(key);
+        lock.writeLock().unlock();
     }
 
     private void setToFlush(@NotNull final ByteBuffer key) throws IOException {
