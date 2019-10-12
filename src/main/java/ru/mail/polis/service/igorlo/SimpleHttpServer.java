@@ -1,7 +1,15 @@
 package ru.mail.polis.service.igorlo;
 
 import com.google.common.base.Charsets;
-import one.nio.http.*;
+
+
+import one.nio.http.HttpServer;
+import one.nio.http.Path;
+import one.nio.http.HttpSession;
+import one.nio.http.HttpServerConfig;
+import one.nio.http.Param;
+import one.nio.http.Request;
+import one.nio.http.Response;
 import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.DAO;
@@ -11,18 +19,26 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.NoSuchElementException;
 
+/**
+ * Simple Service implementation, that works with DAO
+ */
 public class SimpleHttpServer extends HttpServer implements Service {
 
     private final DAO dao;
 
+    /**
+     * @param dao - Data Access Object that works with our data.
+     * @param port - port that server will be using.
+     * @throws IOException
+     */
     public SimpleHttpServer(@NotNull final DAO dao, final int port) throws IOException {
         super(getConfig(port));
         this.dao = dao;
     }
 
     /**
-     * @param request - incoming request
-     * @param id - id requested by user
+     * @param request - incoming request.
+     * @param id - id requested by user.
      * @return - response to request
      */
     @Path("/v0/entity")
@@ -60,6 +76,11 @@ public class SimpleHttpServer extends HttpServer implements Service {
         }
     }
 
+    /**
+     * @param request - incoming request.
+     * @param session - request's session.
+     * @throws IOException
+     */
     @Override
     public void handleDefault(final Request request,
                               final HttpSession session) throws IOException {
