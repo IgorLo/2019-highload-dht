@@ -30,6 +30,8 @@ public class SimpleHttpServer extends HttpServer implements Service {
     private final DAO dao;
 
     /**
+     * HttpServer constructor, that initializes the server.
+     *
      * @param dao - Data Access Object that works with our data.
      * @param port - port that server will be using.
      * @throws IOException - in case of an internal error.
@@ -40,6 +42,8 @@ public class SimpleHttpServer extends HttpServer implements Service {
     }
 
     /**
+     * Deals with requests, that want to work with our data.
+     *
      * @param request - incoming request.
      * @param id - id requested by user.
      * @return - response to request.
@@ -80,6 +84,8 @@ public class SimpleHttpServer extends HttpServer implements Service {
     }
 
     /**
+     * Deals with all other unknown requests.
+     *
      * @param request - incoming request.
      * @param session - request's session.
      * @throws IOException - throws it when could not process the request.
@@ -92,6 +98,8 @@ public class SimpleHttpServer extends HttpServer implements Service {
     }
 
     /**
+     * Sending response message as an answer to request to check status.
+     *
      * @param request - incoming request.
      * @return - response to request.
      */
