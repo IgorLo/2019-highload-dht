@@ -2,7 +2,6 @@ package ru.mail.polis.service.igorlo;
 
 import com.google.common.base.Charsets;
 
-
 import one.nio.http.HttpServer;
 import one.nio.http.Path;
 import one.nio.http.HttpSession;
@@ -11,6 +10,7 @@ import one.nio.http.Param;
 import one.nio.http.Request;
 import one.nio.http.Response;
 import one.nio.server.AcceptorConfig;
+
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.service.Service;
@@ -20,16 +20,19 @@ import java.nio.ByteBuffer;
 import java.util.NoSuchElementException;
 
 /**
- * Simple Service implementation, that works with DAO
+ * Simple Service implementation, that works with DAO.
  */
 public class SimpleHttpServer extends HttpServer implements Service {
 
+    /**
+     * Data Access Object, that works with all the data.
+     */
     private final DAO dao;
 
     /**
      * @param dao - Data Access Object that works with our data.
      * @param port - port that server will be using.
-     * @throws IOException
+     * @throws IOException - in case of an internal error.
      */
     public SimpleHttpServer(@NotNull final DAO dao, final int port) throws IOException {
         super(getConfig(port));
@@ -39,7 +42,7 @@ public class SimpleHttpServer extends HttpServer implements Service {
     /**
      * @param request - incoming request.
      * @param id - id requested by user.
-     * @return - response to request
+     * @return - response to request.
      */
     @Path("/v0/entity")
     public Response entity(final Request request, @Param("id") final String id) {
@@ -79,7 +82,7 @@ public class SimpleHttpServer extends HttpServer implements Service {
     /**
      * @param request - incoming request.
      * @param session - request's session.
-     * @throws IOException
+     * @throws IOException - throws it when could not process the request.
      */
     @Override
     public void handleDefault(final Request request,
@@ -89,8 +92,8 @@ public class SimpleHttpServer extends HttpServer implements Service {
     }
 
     /**
-     * @param request - incoming request
-     * @return - response to request
+     * @param request - incoming request.
+     * @return - response to request.
      */
     @Path("/v0/status")
     public Response status(final Request request) {
