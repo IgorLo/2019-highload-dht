@@ -1,6 +1,5 @@
 package ru.mail.polis.dao.igorlo;
 
-
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -14,9 +13,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
-
 public final class SSTable implements Table {
-
     @NotNull private final LongBuffer offsets;
     @NotNull private final ByteBuffer rows;
     private final long rowsNumber;
