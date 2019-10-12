@@ -147,7 +147,6 @@ public class MemoryTablePool implements Table, Closeable {
     /**
      * Mark mem table as flushed and remove her from map storage of tables.
      * @param serialNumber - index of removable table.
-     *
      * */
     public void flushed(final long serialNumber) {
         lock.writeLock().lock();
@@ -161,7 +160,6 @@ public class MemoryTablePool implements Table, Closeable {
     /**
      * Compact values from all tables with current table.
      * @param ssTables - all tables from root.
-     *
      * */
     public void compact(@NotNull final NavigableMap<Long, Table> ssTables) throws IOException {
         lock.readLock().lock();
@@ -177,7 +175,6 @@ public class MemoryTablePool implements Table, Closeable {
     /**
      * Compacted.
      * @param serialNumber - index of compacted table.
-     *
      * */
     public void compacted(final long serialNumber) {
         lock.writeLock().lock();

@@ -122,6 +122,4 @@ public class SimpleHttpServer extends HttpServer implements Service {
         config.selectors = 4;
         return config;
     }
-
-
 }
