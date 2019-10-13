@@ -78,11 +78,11 @@ public class MemoryTablePool implements Table, Closeable {
             throw new IllegalStateException("MemTablePool is already closed!");
         }
         setToFlush(key);
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
             current.upsert(key, value);
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
@@ -92,11 +92,11 @@ public class MemoryTablePool implements Table, Closeable {
             throw new IllegalStateException("MemTablePool is already closed!");
         }
         setToFlush(key);
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
             current.remove(key);
         } finally {
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
