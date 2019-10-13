@@ -79,8 +79,11 @@ public class MemoryTablePool implements Table, Closeable {
         }
         setToFlush(key);
         lock.writeLock().lock();
-        current.upsert(key, value);
-        lock.writeLock().unlock();
+        try {
+            current.upsert(key, value);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     @Override
@@ -90,8 +93,11 @@ public class MemoryTablePool implements Table, Closeable {
         }
         setToFlush(key);
         lock.writeLock().lock();
-        current.remove(key);
-        lock.writeLock().unlock();
+        try {
+            current.remove(key);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private void setToFlush(@NotNull final ByteBuffer key) throws IOException {

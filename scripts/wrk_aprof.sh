@@ -16,6 +16,7 @@ fi
 
 rm -r output
 mkdir output
+chmod 777 output
 
 wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080
 aprof start -f output/1_get_empty.svg jps

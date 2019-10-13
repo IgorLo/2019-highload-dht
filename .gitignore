@@ -13,7 +13,8 @@
 !settings.gradle
 !*.lua
 !*.sh
-!*.svg
+#!*.svg
+!scripts/output/*.txt
 !gradle/wrapper/*
 
 # ...even if they are in subdirectories
