@@ -1,5 +1,7 @@
 package ru.mail.polis.dao.igorlo;
 
+import com.google.common.base.Splitter;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Iterators;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Record;
@@ -31,6 +33,7 @@ public class PersistentDAO implements DAO {
 
     class FlushingTask implements Runnable {
 
+        @SuppressWarnings("CatchAndPrintStackTrace")
         @Override
         public void run() {
             FlushTable tableToFlush;
@@ -83,8 +86,8 @@ public class PersistentDAO implements DAO {
                     final BasicFileAttributes attrs) throws IOException {
                 final File file = path.toFile();
                 if (file.getName().matches(REGEX)) {
-                    final String fileName = file.getName().split("\\.")[0];
-                    final long currentIndexFile = Long.parseLong(fileName.split("_")[1]);
+                    final String fileName = Iterables.get(Splitter.on('.').split(file.getName()), 0);
+                    final long currentIndexFile = Long.parseLong(Iterables.get(Splitter.on('_').split(fileName), 1));
                     indexSStable.set(
                             Math.max(indexSStable.get(), currentIndexFile + 1L));
                     ssTables.put(currentIndexFile, new SSTable(file.toPath(), currentIndexFile));
@@ -163,8 +166,8 @@ public class PersistentDAO implements DAO {
                     final BasicFileAttributes attrs) throws IOException {
                 final File file = path.toFile();
                 if (file.getName().matches(REGEX)) {
-                    final String fileName = file.getName().split("\\.")[0];
-                    final long sn = Long.parseLong(fileName.split("_")[1]);
+                    final String fileName = Iterables.get(Splitter.on('.').split(file.getName()), 0);
+                    final long sn = Long.parseLong(Iterables.get(Splitter.on('_').split(fileName), 1));
                     if (sn >= serialNumber) {
                         ssTables.put(sn, new SSTable(file.toPath(), sn));
                         return FileVisitResult.CONTINUE;

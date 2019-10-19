@@ -4,14 +4,10 @@ import java.util.NoSuchElementException;
 
 public class LiteNoSuchElementExcecption extends NoSuchElementException {
 
-    public LiteNoSuchElementExcecption(final String s) {
-        super(s);
-    }
+    private static final long serialVersionUID = 13L;
 
     @Override
-    public Throwable fillInStackTrace() {
-        synchronized (this){
-            return this;
-        }
+    public synchronized Throwable fillInStackTrace() {
+        return this;
     }
 }

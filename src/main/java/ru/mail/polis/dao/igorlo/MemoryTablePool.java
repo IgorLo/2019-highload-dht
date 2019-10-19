@@ -61,8 +61,8 @@ public class MemoryTablePool implements Table, Closeable {
     @NotNull
     @Override
     public Iterator<TableRow> iterator(@NotNull final ByteBuffer from) throws IOException {
-        lock.readLock().lock();
         final List<Iterator<TableRow>> iterators;
+        lock.readLock().lock();
         try {
             iterators = Table.combineTables(current, pendingToFlush, from);
         } finally {
@@ -103,8 +103,8 @@ public class MemoryTablePool implements Table, Closeable {
     private void setToFlush(@NotNull final ByteBuffer key) throws IOException {
         if (current.sizeInBytes()
                 + TableRow.getSizeOfFlushedRow(key, TOMBSTONE) >= flushThresholdInBytes) {
-            lock.writeLock().lock();
             FlushTable tableToFlush = null;
+            lock.writeLock().lock();
             try {
                 if (current.sizeInBytes()
                         + TableRow.getSizeOfFlushedRow(key, TOMBSTONE) >= flushThresholdInBytes) {
@@ -128,8 +128,8 @@ public class MemoryTablePool implements Table, Closeable {
     }
 
     private void setCompactTableToFlush(@NotNull final Iterator<TableRow> rows) throws IOException {
-        lock.writeLock().lock();
         FlushTable tableToFlush;
+        lock.writeLock().lock();
         try {
             tableToFlush = new FlushTable
                     .Builder(rows, index)
@@ -172,8 +172,8 @@ public class MemoryTablePool implements Table, Closeable {
      * @param ssTables - all tables from root.
      * */
     public void compact(@NotNull final NavigableMap<Long, Table> ssTables) throws IOException {
-        lock.readLock().lock();
         final List<Iterator<TableRow>> iterators;
+        lock.readLock().lock();
         try {
             iterators = Table.combineTables(current, ssTables, LOWEST_KEY);
         } finally {
@@ -224,8 +224,8 @@ public class MemoryTablePool implements Table, Closeable {
         if (!isClosed.compareAndSet(false, true)) {
             return;
         }
-        lock.writeLock().lock();
         FlushTable tableToFlush;
+        lock.writeLock().lock();
         try {
             tableToFlush = new FlushTable
                     .Builder(current.iterator(LOWEST_KEY), index)
