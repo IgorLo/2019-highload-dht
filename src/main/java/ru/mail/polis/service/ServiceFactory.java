@@ -25,7 +25,6 @@ import org.jetbrains.annotations.NotNull;
 
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.service.igorlo.AsyncService;
-import ru.mail.polis.service.igorlo.SimpleHttpServer;
 
 /**
  * Constructs {@link Service} instances.
