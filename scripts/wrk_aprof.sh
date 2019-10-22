@@ -23,21 +23,59 @@ aprof stop "$JPID"
 # Разогрев
 wrk -s get.lua -c 4 -d 20 -t 4 -R 10k -L http://localhost:8080
 
-aprof start -f output/1_get_empty.svg "$JPID"
+#------ CPU
+
+aprof start -e cpu -f output/1_get_empty_cpu.svg "$JPID"
 wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/1_get_empty_wrk.txt
-aprof stop -f output/1_get_empty.svg "$JPID"
+aprof stop -e cpu -f output/1_get_empty_cpu.svg "$JPID"
 
-aprof start -f output/2_put.svg "$JPID"
+aprof start -e cpu -f output/2_put_cpu.svg "$JPID"
 wrk -s put.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/2_put_wrk.txt
-aprof stop -f output/2_put.svg "$JPID"
+aprof stop -e cpu -f output/2_put_cpu.svg "$JPID"
 
-aprof start -f output/3_get_full.svg "$JPID"
+aprof start -e cpu -f output/3_get_full_cpu.svg "$JPID"
 wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/3_get_full_wrk.txt
-aprof stop -f output/3_get_full.svg "$JPID"
+aprof stop -e cpu -f output/3_get_full_cpu.svg "$JPID"
 
-aprof start -f output/4_delete.svg "$JPID"
+aprof start -e cpu -f output/4_delete_cpu.svg "$JPID"
 wrk -s delete.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/4_delete_wrk.txt
-aprof stop -f output/4_delete.svg "$JPID"
+aprof stop -e cpu -f output/4_delete_cpu.svg "$JPID"
+
+#------ ALLOC
+
+aprof start -e alloc -f output/1_get_empty_alloc.svg "$JPID"
+wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/1_get_empty_wrk.txt
+aprof stop -e alloc -e cpu -f output/1_get_empty_alloc.svg "$JPID"
+
+aprof start -e alloc -e cpu  -f output/2_put_alloc.svg "$JPID"
+wrk -s put.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/2_put_wrk.txt
+aprof stop -e alloc -f output/2_put_alloc.svg "$JPID"
+
+aprof start -e alloc -f output/3_get_full_alloc.svg "$JPID"
+wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/3_get_full_wrk.txt
+aprof stop -e alloc -f output/3_get_full_alloc.svg "$JPID"
+
+aprof start -e alloc -f output/4_delete_alloc.svg "$JPID"
+wrk -s delete.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/4_delete_wrk.txt
+aprof stop -e alloc -f output/4_delete_alloc.svg "$JPID"
+
+#------ LOCK
+
+aprof start -e lock -f output/1_get_empty_lock.svg "$JPID"
+wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/1_get_empty_wrk.txt
+aprof stop -e lock -f output/1_get_empty_lock.svg "$JPID"
+
+aprof start -e lock -f output/2_put_lock.svg "$JPID"
+wrk -s put.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/2_put_wrk.txt
+aprof stop -e lock -f output/2_put_lock.svg "$JPID"
+
+aprof start -e lock -f output/3_get_full_lock.svg "$JPID"
+wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/3_get_full_wrk.txt
+aprof stop -e lock -f output/3_get_full_lock.svg "$JPID"
+
+aprof start -e lock -f output/4_delete_lock.svg "$JPID"
+wrk -s delete.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/4_delete_wrk.txt
+aprof stop -e lock -f output/4_delete_lock.svg "$JPID"
 
 #Hardcore tests
 
