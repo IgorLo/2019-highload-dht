@@ -15,6 +15,7 @@
 !*.sh
 #!*.svg
 !scripts/output/*.txt
+!scripts/output/*.svg
 !gradle/wrapper/*
 
 # ...even if they are in subdirectories
