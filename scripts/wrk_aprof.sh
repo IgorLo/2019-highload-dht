@@ -1,7 +1,7 @@
 #!/bin/bash
 
 JPID=$(ps ux | grep '/snap/intellij-idea-ultimate/173/jbr/bin/java -Xmx128M' | grep -v grep | awk '{print $2}\')
-echo $JPID
+#echo $JPID
 
 #lover paranoidness of system
 sh -c 'echo 1 >/proc/sys/kernel/perf_event_paranoid'
@@ -11,86 +11,33 @@ TIME=10
 if [[ "$1" != "" ]]; then
     TIME="$1"
 else
-    TIME=20
+    TIME=10
 fi
 
 rm -rf output
 mkdir output
 chmod 777 output
 
+wrk -s get.lua -c 1024 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/1_get_empty_old.txt
+
+aprof start -f output/1_get_empty.svg "$JPID"
+wrk -s get.lua -c 1024 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/1_get_empty_old.txt
 aprof stop "$JPID"
 
-# Разогрев
-wrk -s get.lua -c 4 -d 20 -t 4 -R 10k -L http://localhost:8080
+aprof start 99 -f output/2_put.svg "$JPID"
+wrk -s put.lua -c 1024 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/2_put_old.txt
+aprof stop "$JPID"
 
-#------ CPU
+aprof start 99 -f output/3_get_full.svg "$JPID"
+wrk -s get.lua -c 1024 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/3_get_full_old.txt
+aprof stop "$JPID"
 
-aprof start -e cpu -f output/1_get_empty_cpu.svg "$JPID"
-wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/1_get_empty_wrk.txt
-aprof stop -e cpu -f output/1_get_empty_cpu.svg "$JPID"
-
-aprof start -e cpu -f output/2_put_cpu.svg "$JPID"
-wrk -s put.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/2_put_wrk.txt
-aprof stop -e cpu -f output/2_put_cpu.svg "$JPID"
-
-aprof start -e cpu -f output/3_get_full_cpu.svg "$JPID"
-wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/3_get_full_wrk.txt
-aprof stop -e cpu -f output/3_get_full_cpu.svg "$JPID"
-
-aprof start -e cpu -f output/4_delete_cpu.svg "$JPID"
-wrk -s delete.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/4_delete_wrk.txt
-aprof stop -e cpu -f output/4_delete_cpu.svg "$JPID"
-
-aprof start -e cpu -f output/5_range_cpu.svg "$JPID"
-wrk -s range.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/5_range_wrk.txt
-aprof stop -e cpu -f output/5_range_cpu.svg "$JPID"
-
-#------ ALLOC
-
-aprof start -e alloc -f output/1_get_empty_alloc.svg "$JPID"
-wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/1_get_empty_wrk.txt
-aprof stop -e alloc -e cpu -f output/1_get_empty_alloc.svg "$JPID"
-
-aprof start -e alloc -e cpu  -f output/2_put_alloc.svg "$JPID"
-wrk -s put.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/2_put_wrk.txt
-aprof stop -e alloc -f output/2_put_alloc.svg "$JPID"
-
-aprof start -e alloc -f output/3_get_full_alloc.svg "$JPID"
-wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/3_get_full_wrk.txt
-aprof stop -e alloc -f output/3_get_full_alloc.svg "$JPID"
-
-aprof start -e alloc -f output/4_delete_alloc.svg "$JPID"
-wrk -s delete.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/4_delete_wrk.txt
-aprof stop -e alloc -f output/4_delete_alloc.svg "$JPID"
-
-aprof start -e alloc -f output/5_range_alloc.svg "$JPID"
-wrk -s range.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/5_range_wrk.txt
-aprof stop -e alloc -f output/5_range_alloc.svg "$JPID"
-
-#------ LOCK
-
-aprof start -e lock -f output/1_get_empty_lock.svg "$JPID"
-wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/1_get_empty_wrk.txt
-aprof stop -e lock -f output/1_get_empty_lock.svg "$JPID"
-
-aprof start -e lock -f output/2_put_lock.svg "$JPID"
-wrk -s put.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/2_put_wrk.txt
-aprof stop -e lock -f output/2_put_lock.svg "$JPID"
-
-aprof start -e lock -f output/3_get_full_lock.svg "$JPID"
-wrk -s get.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/3_get_full_wrk.txt
-aprof stop -e lock -f output/3_get_full_lock.svg "$JPID"
-
-aprof start -e lock -f output/4_delete_lock.svg "$JPID"
-wrk -s delete.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/4_delete_wrk.txt
-aprof stop -e lock -f output/4_delete_lock.svg "$JPID"
-
-aprof start -e lock -f output/5_range_lock.svg "$JPID"
-wrk -s range.lua -c 4 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/5_range_wrk.txt
-aprof stop -e lock -f output/5_range_lock.svg "$JPID"
+aprof start 99 -f output/4_delete.svg "$JPID"
+wrk -s delete.lua -c 1024 -d $TIME -t 4 -R 10k -L http://localhost:8080 >> output/4_delete_old.txt
+aprof stop "$JPID"
 
 #Hardcore tests
-
+#
 #wrk -s get.lua -c 4 -d $TIME -t 4 -R 1000k -L http://localhost:8080
 #aprof start -f output/1_get_empty_million.svg jps
 #wrk -s get.lua -c 4 -d $TIME -t 4 -R 1000k -L http://localhost:8080 >> output/1_get_empty_wrk_million.txt
