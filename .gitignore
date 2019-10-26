@@ -17,8 +17,9 @@
 !scripts/output/*.txt
 !scripts/output/*.svg
 !gradle/wrapper/*
-!scripts/stage_2/*
-!scripts/stage_3/*
+!testTesults/stage_2/*
+!testTesults/stage_3/*
+!testTesults/stage_4/*
 
 # ...even if they are in subdirectories
 !*/

@@ -1,16 +1,11 @@
 package ru.mail.polis.service.igorlo;
 
 import com.google.common.base.Charsets;
-import one.nio.http.HttpServer;
-import one.nio.http.HttpServerConfig;
-import one.nio.http.Path;
-import one.nio.http.Param;
-import one.nio.http.Request;
-import one.nio.http.Response;
-import one.nio.http.HttpSession;
+import one.nio.http.*;
+import one.nio.net.ConnectionString;
 import one.nio.net.Socket;
+import one.nio.pool.PoolException;
 import one.nio.server.AcceptorConfig;
-import one.nio.server.RejectedSessionException;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +15,7 @@ import ru.mail.polis.service.Service;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -33,21 +29,33 @@ public class AsyncService extends HttpServer implements Service {
 
     private final DAO dao;
     private final Executor executor;
+    private final HashingTopology nodes;
+    private final HashMap<String, HttpClient> pool;
 
     /**
      * The constructor of asynchronous server.
      *
-     * @param port - server port
-     * @param dao - is dao
+     * @param port     - server port
+     * @param dao      - is dao
      * @param executor - is executor
      * @throws IOException - input/output exception
      */
     public AsyncService(final int port,
-                            @NotNull final DAO dao,
-                            @NotNull final Executor executor) throws IOException {
+                        @NotNull final DAO dao,
+                        @NotNull final Executor executor,
+                        @NotNull final HashingTopology nodes) throws IOException {
         super(getConfig(port));
         this.dao = dao;
         this.executor = executor;
+        this.nodes = nodes;
+        this.pool = new HashMap<>();
+        for (final String node : nodes.all()) {
+            if (nodes.isMe(node)) {
+                continue;
+            }
+            assert !pool.containsKey(node);
+            pool.put(node, new HttpClient(new ConnectionString(node + "?timeout=100")));
+        }
     }
 
     private static HttpServerConfig getConfig(final int port) {
@@ -65,7 +73,7 @@ public class AsyncService extends HttpServer implements Service {
      * Received request.
      *
      * @param request - request that was received (GET, PUT, DELETE)
-     * @param id - id element
+     * @param id      - id element
      */
     @Path("/v0/entity")
     public void entity(@NotNull final Request request,
@@ -75,6 +83,11 @@ public class AsyncService extends HttpServer implements Service {
             session.sendError(Response.BAD_REQUEST, "No Id!");
         }
         final ByteBuffer key = ByteBuffer.wrap(Objects.requireNonNull(id).getBytes(Charsets.UTF_8));
+        final String node = nodes.primaryFor(key);
+        if (!nodes.isMe(node)) {
+            executeAsync(session, () -> proxy(node, request));
+            return;
+        }
         switch (request.getMethod()) {
             case Request.METHOD_GET:
                 executeAsync(session, () -> get(key));
@@ -104,7 +117,7 @@ public class AsyncService extends HttpServer implements Service {
     }
 
     @Override
-    public HttpSession createSession(final Socket socket) throws RejectedSessionException {
+    public HttpSession createSession(final Socket socket) {
         return new StorageSession(socket, this);
     }
 
@@ -113,8 +126,8 @@ public class AsyncService extends HttpServer implements Service {
      *
      * @param request - request object
      * @param session - HttpSession
-     * @param start - start key for range
-     * @param end - end key for range
+     * @param start   - start key for range
+     * @param end     - end key for range
      * @throws IOException - input/output exception
      */
     @Path("/v0/entities")
@@ -191,5 +204,15 @@ public class AsyncService extends HttpServer implements Service {
                 }
             }
         });
+    }
+
+    private Response proxy(@NotNull final String node, @NotNull final Request request) {
+        assert !nodes.isMe(node);
+        try {
+            return pool.get(node).invoke(request);
+        } catch (InterruptedException | PoolException | HttpException | IOException e) {
+            log.error("Cant proxy", e);
+            return new Response(Response.INTERNAL_ERROR, Response.EMPTY);
+        }
     }
 }
