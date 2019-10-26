@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Map;
 import java.util.concurrent.Executor;
 
 public class AsyncService extends HttpServer implements Service {
@@ -38,7 +39,7 @@ public class AsyncService extends HttpServer implements Service {
     private final DAO dao;
     private final Executor executor;
     private final HashingTopology nodes;
-    private final HashMap<String, HttpClient> pool;
+    private final Map<String, HttpClient> pool;
 
     /**
      * The constructor of asynchronous server.
