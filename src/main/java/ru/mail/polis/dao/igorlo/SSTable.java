@@ -1,49 +1,48 @@
 package ru.mail.polis.dao.igorlo;
 
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.LongBuffer;
+import java.nio.IntBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.Path;
+import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public final class SSTable implements Table {
-    @NotNull private final LongBuffer offsets;
-    @NotNull private final ByteBuffer rows;
-    private final long rowsNumber;
-    private final long serialNumber;
-    private final long sizeInBytes;
+class SSTable implements Table {
+    private static final Logger log = LoggerFactory.getLogger(SSTable.class);
+    private final int count;
+    private final int fileIndex;
+    private final ByteBuffer rows;
+    private final IntBuffer offsets;
+    private final File file;
 
     /**
-     * Constructs a new SSTable.
+     * Creates an object that is a file on disk, with the ability to create an iterator on this file.
      *
-     * @param path the path of the file where data of SSTable is stored
-     * @param index the serial number of SStable
-     * @throws IOException if an I/O error occurs
-     * @throws IllegalArgumentException if serial number less than 0
+     * @param file file for which you need to get a table
+     * @throws IOException if an I/O error is thrown by a read method
      */
-    public SSTable(
-            @NotNull final Path path,
-            final long index) throws IOException, IllegalArgumentException {
-        if (index < 0) {
-            throw new IllegalArgumentException("Index must not be less than 0!");
-        }
-        this.serialNumber = index;
-        try (var fc = FileChannel.open(path, StandardOpenOption.READ)) {
-            this.sizeInBytes = fc.size();
+    SSTable(@NotNull final File file) throws IOException {
+        this.file = file;
+        this.fileIndex = Integer.parseInt(file
+                .getName()
+                .substring(PersistentDAO.PREFIX.length(), file.getName().length() - PersistentDAO.SUFFIX.length()));
+        try (FileChannel fc = FileChannel.open(file.toPath(),
+                StandardOpenOption.READ)) {
             final var mapped = fc.map(FileChannel.MapMode.READ_ONLY, 0, fc.size())
                     .order(ByteOrder.BIG_ENDIAN);
-            this.rowsNumber = mapped.getLong(mapped.limit() - Long.BYTES);
-
+            this.count = mapped.getInt(mapped.limit() - Integer.BYTES);
             final var offsetsBuffer = mapped.duplicate()
-                    .position((int) (mapped.limit() - Long.BYTES - Long.BYTES * rowsNumber))
-                    .limit(mapped.limit() - Long.BYTES);
-            this.offsets = offsetsBuffer.slice().asLongBuffer();
+                    .position(mapped.limit() - Integer.BYTES - Integer.BYTES * count)
+                    .limit(mapped.limit() - Integer.BYTES);
+            this.offsets = offsetsBuffer.slice().asIntBuffer();
 
             this.rows = mapped.asReadOnlyBuffer()
                     .limit(offsetsBuffer.position())
@@ -51,164 +50,113 @@ public final class SSTable implements Table {
         }
     }
 
+    /**
+     * Creates file iterator.
+     *
+     * @param from the key from which the iterator will begin
+     * @return file iterator
+     * @throws IOException if an I/O error is thrown by a read method
+     */
+    @Override
     @NotNull
-    private ByteBuffer rowAt(final long offsetPosition) {
-        final long offset = offsets.get((int) offsetPosition);
-        final long rowSize = (offsetPosition == rowsNumber - 1)
-                ? rows.limit() - offset
-                : offsets.get((int) (offsetPosition + 1)) - offset;
-        return rows.asReadOnlyBuffer()
-                .position((int) offset)
-                .limit((int) (rowSize + offset))
-                .slice();
+    public Iterator<TableRow> iterator(@NotNull final ByteBuffer from) throws IOException {
+        return new Iterator<>() {
+            int index = getOffsetsIndex(from);
+
+            @Override
+            public boolean hasNext() {
+                return index < count;
+            }
+
+            @Override
+            public TableRow next() {
+                assert hasNext();
+                TableRow row = null;
+                try {
+                    row = getRowAt(index++);
+                } catch (IOException e) {
+                    log.error("IOException in fileIndex: " + fileIndex, e);
+                }
+                return row;
+            }
+        };
     }
 
-    @NotNull
-    private ByteBuffer keyAt(@NotNull final ByteBuffer row) {
-        final var rowBuffer = row.asReadOnlyBuffer();
-        final int keySize = rowBuffer.getInt();
-        return rowBuffer.limit(keySize + Integer.BYTES)
-                .slice();
+    @Override
+    public void upsert(@NotNull final ByteBuffer key,
+                       @NotNull final ByteBuffer value,
+                       @NotNull final AtomicInteger fileIndex) throws IOException {
+        throw new UnsupportedOperationException();
     }
 
-    private long timestampAt(@NotNull final ByteBuffer row) {
-        final var rowBuffer = row.asReadOnlyBuffer();
-        final int keySize = rowBuffer.getInt();
-        return rowBuffer.position(keySize + Integer.BYTES)
-                .getLong();
+    @Override
+    public void remove(@NotNull final ByteBuffer key,
+                       @NotNull final AtomicInteger fileIndex) throws IOException {
+        throw new UnsupportedOperationException();
     }
 
-    @NotNull
-    private ByteBuffer valueAt(@NotNull final ByteBuffer row) {
-        final var rowBuffer = row.asReadOnlyBuffer();
-        final int keySize = rowBuffer.getInt();
-        return rowBuffer.position(keySize + Integer.BYTES + Long.BYTES * 2)
-                .slice();
+    @Override
+    public void clear() {
+        try {
+            Files.delete(file.toPath());
+        } catch (IOException e) {
+            log.error("IOException during deletion in fileIndex: " + fileIndex, e);
+        }
     }
 
-    @NotNull
-    private TableRow transform(final long offsetPosition) {
-        final var row = rowAt(offsetPosition);
-        final var key = keyAt(row);
-        final var timestamp = timestampAt(row);
-        final var value = timestamp < 0
-                ? Value.tombstone(-timestamp)
-                : Value.of(timestamp, valueAt(row));
-        return TableRow.of(serialNumber, key, value);
+    @Override
+    public long sizeInBytes() {
+        return file.length();
     }
 
-    private long position(@NotNull final ByteBuffer key) {
-        long left = 0;
-        long right = rowsNumber - 1;
-        while(left <= right) {
-            final long mid = (left + right) >>> 1;
-            final int cmp = keyAt(rowAt(mid)).compareTo(key);
-            if (cmp < 0) {
-                left = mid + 1;
-            } else if (cmp > 0) {
-                right = mid - 1;
+    private int getOffsetsIndex(@NotNull final ByteBuffer from) throws IOException {
+        int left = 0;
+        int right = count - 1;
+        while (left <= right) {
+            final int middle = left + (right - left) / 2;
+            final int resCmp = from.compareTo(getKeyAt(middle));
+            if (resCmp < 0) {
+                right = middle - 1;
+            } else if (resCmp > 0) {
+                left = middle + 1;
             } else {
-                return mid;
+                return middle;
             }
         }
         return left;
     }
 
-    @NotNull
-    @Override
-    public Iterator<TableRow> iterator(@NotNull final ByteBuffer from) throws IOException {
-        return new SSTableIterator(from);
+    private ByteBuffer getKeyAt(final int i) throws IOException {
+        assert 0 <= i && i < count;
+        final int offset = offsets.get(i);
+        final int keySize = rows.getInt(offset);
+        return rows.duplicate().position(offset + Integer.BYTES).limit(offset + Integer.BYTES + keySize).slice();
     }
 
-    @Override
-    public void upsert(
-            @NotNull final ByteBuffer key,
-            @NotNull final ByteBuffer value) throws IOException {
-        throw new UnsupportedOperationException();
-    }
+    private TableRow getRowAt(final int i) throws IOException {
+        assert 0 <= i && i < count;
+        int offset = offsets.get(i);
 
-    @Override
-    public void remove(@NotNull final ByteBuffer key) throws IOException {
-        throw new UnsupportedOperationException();
-    }
+        //Key
+        final ByteBuffer keyBB = getKeyAt(i);
+        offset += Integer.BYTES + keyBB.remaining();
 
-    @Override
-    public long sizeInBytes() {
-        return sizeInBytes;
-    }
+        //Status
+        final int status = rows.getInt(offset);
+        offset += Integer.BYTES;
 
-    @Override
-    public long serialNumber() {
-        return serialNumber;
-    }
-
-    private class SSTableIterator implements Iterator<TableRow> {
-        private long position;
-
-        SSTableIterator(@NotNull final ByteBuffer from) {
-            this.position = position(from);
+        ByteBuffer valueBB;
+        if (status == PersistentDAO.DEAD) {
+            valueBB = PersistentDAO.TOMBSTONE;
+        } else {
+            //Value
+            final int valueSize = rows.getInt(offset);
+            valueBB = rows.duplicate().position(offset + Integer.BYTES)
+                    .limit(offset + Integer.BYTES + valueSize)
+                    .slice();
+            offset += valueSize;
         }
-
-        @Override
-        public boolean hasNext() {
-            return position < rowsNumber;
-        }
-
-        @Override
-        public TableRow next() {
-            if(!hasNext()){
-                throw new NoSuchElementException();
-            }
-            final var row = transform(position);
-            position++;
-            return row;
-        }
-    }
-
-    /**
-     * Flush of data to disk as SSTable.
-     *
-     * @param flushedFile the path of the file to which the data is flushed
-     * @param rowsIterator the iterator to flush rows ({@link TableRow}
-     * @throws IOException if an I/O error occurs
-     */
-    public static void flush(
-            @NotNull final Path flushedFile,
-            @NotNull final Iterator<TableRow> rowsIterator) throws IOException {
-        long offset = 0L;
-        final var offsets = new ArrayList<Long>();
-        offsets.add(offset);
-        try (var fc = FileChannel.open(
-                flushedFile,
-                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-            while (rowsIterator.hasNext()) {
-                final var row = rowsIterator.next();
-                final var key = row.getKey();
-                final var value = row.getValue();
-                final var sizeRow = TableRow.getSizeOfFlushedRow(key, value.getData());
-                final var rowBuffer = ByteBuffer.allocate((int) sizeRow)
-                        .putInt(key.remaining())
-                        .put(key.duplicate())
-                        .putLong(value.getTimestamp());
-                if (!value.isDead() && row.getValue().getData().remaining() != 0) {
-                    final var data = row.getValue().getData();
-                    rowBuffer.putLong(data.remaining())
-                            .put(data.duplicate());
-                }
-                offset += sizeRow;
-                offsets.add(offset);
-                rowBuffer.flip();
-                fc.write(rowBuffer);
-            }
-            offsets.remove(offsets.size() - 1);
-            final var offsetsBuffer = ByteBuffer.allocate(
-                    offsets.size() * Long.BYTES + Long.BYTES);
-            for (final var anOffset: offsets) {
-                offsetsBuffer.putLong(anOffset);
-            }
-            offsetsBuffer.putLong(offsets.size())
-                    .flip();
-            fc.write(offsetsBuffer);
-        }
+        final long time = rows.getLong(offset);
+        return TableRow.of(fileIndex, keyBB, valueBB, status, time);
     }
 }

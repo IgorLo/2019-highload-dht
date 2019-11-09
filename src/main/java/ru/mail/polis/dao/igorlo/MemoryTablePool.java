@@ -1,207 +1,91 @@
 package ru.mail.polis.dao.igorlo;
 
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.NavigableMap;
-import java.util.TreeMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import static ru.mail.polis.dao.igorlo.PersistentDAO.TOMBSTONE;
-
 public class MemoryTablePool implements Table, Closeable {
-    static final ByteBuffer LOWEST_KEY = ByteBuffer.allocate(0);
-
+    private static final Logger log = LoggerFactory.getLogger(MemoryTablePool.class);
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final long maxHeap;
+    private final NavigableMap<Integer, Table> tableForFlush;
     private volatile MemoryTable current;
-    private final NavigableMap<Long, Table> pendingToFlush;
-    private final NavigableMap<Long, Iterator<TableRow>> pendingToCompact;
     private final BlockingQueue<FlushTable> flushQueue;
-    private long index;
+    private final AtomicBoolean stop = new AtomicBoolean(false);
+    private final AtomicBoolean compacting = new AtomicBoolean(false);
+    private final AtomicInteger fileIndex;
 
-    @NotNull private final ExecutorService flusher;
-    @NotNull private final Runnable flushingTask;
-
-    private final long flushThresholdInBytes;
-    private final AtomicBoolean isClosed;
-
-    /**
-     * Pool of mem table to flush.
-     *
-     * @param flushThresholdInBytes - limit for flushing tables.
-     * @param startIndex - first index to be used for tables.
-     **/
-    public MemoryTablePool(final long flushThresholdInBytes,
-                        final long startIndex,
-                        final int nThreadsToFlush,
-                        @NotNull final Runnable flushingTask) {
-        this.flushThresholdInBytes = flushThresholdInBytes;
+    MemoryTablePool(final long maxHeap, @NotNull final AtomicInteger fileIndex) {
+        this.maxHeap = maxHeap;
         this.current = new MemoryTable();
-        this.pendingToFlush = new TreeMap<>();
-        this.index = startIndex;
-        this.flushQueue = new ArrayBlockingQueue<>(nThreadsToFlush + 1);
-        this.isClosed = new AtomicBoolean();
-        this.pendingToCompact = new TreeMap<>();
-
-        this.flusher = Executors.newFixedThreadPool(nThreadsToFlush);
-        this.flushingTask = flushingTask;
+        this.tableForFlush = new ConcurrentSkipListMap<>();
+        this.flushQueue = new ArrayBlockingQueue<>(2);
+        this.fileIndex = fileIndex;
     }
 
     @NotNull
     @Override
     public Iterator<TableRow> iterator(@NotNull final ByteBuffer from) throws IOException {
-        final List<Iterator<TableRow>> iterators;
+        final List<Iterator<TableRow>> iteratorList;
         lock.readLock().lock();
         try {
-            iterators = Table.combineTables(current, pendingToFlush, from);
+            iteratorList = Utilities.getListIterators(tableForFlush, current, from);
         } finally {
             lock.readLock().unlock();
         }
-        return Table.transformRows(iterators);
+        return Utilities.getActualRowIterator(iteratorList);
     }
 
     @Override
     public void upsert(@NotNull final ByteBuffer key,
-                       @NotNull final ByteBuffer value) throws IOException {
-        if (isClosed.get()) {
-            throw new IllegalStateException("MemTablePool is already closed!");
+                       @NotNull final ByteBuffer value,
+                       @NotNull final AtomicInteger fileIndex) throws IOException {
+        if (stop.get()) {
+            throw new IllegalStateException("Already stopped");
         }
-        setToFlush(key);
-        lock.readLock().lock();
-        try {
-            current.upsert(key, value);
-        } finally {
-            lock.readLock().unlock();
-        }
+        current.upsert(key, value, fileIndex);
+        enqueueFlush(fileIndex);
+
     }
 
     @Override
-    public void remove(@NotNull final ByteBuffer key) throws IOException {
-        if (isClosed.get()) {
-            throw new IllegalStateException("MemTablePool is already closed!");
+    public void remove(@NotNull final ByteBuffer key,
+                       @NotNull final AtomicInteger fileIndex) throws IOException {
+        if (stop.get()) {
+            throw new IllegalStateException("Already stopped");
         }
-        setToFlush(key);
-        lock.readLock().lock();
-        try {
-            current.remove(key);
-        } finally {
-            lock.readLock().unlock();
-        }
+        current.remove(key, fileIndex);
+        enqueueFlush(fileIndex);
     }
 
-    private void setToFlush(@NotNull final ByteBuffer key) throws IOException {
-        if (current.sizeInBytes()
-                + TableRow.getSizeOfFlushedRow(key, TOMBSTONE) >= flushThresholdInBytes) {
-            FlushTable tableToFlush = null;
-            lock.writeLock().lock();
-            try {
-                if (current.sizeInBytes()
-                        + TableRow.getSizeOfFlushedRow(key, TOMBSTONE) >= flushThresholdInBytes) {
-                    tableToFlush = FlushTable.of(current.iterator(LOWEST_KEY), index);
-                    pendingToFlush.put(index, current);
-                    index++;
-                    current = new MemoryTable();
-                }
-            } finally {
-                lock.writeLock().unlock();
-            }
-            if (tableToFlush != null) {
-                try {
-                    flushQueue.put(tableToFlush);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-                flusher.execute(flushingTask);
-            }
-        }
-    }
-
-    private void setCompactTableToFlush(@NotNull final Iterator<TableRow> rows) throws IOException {
-        FlushTable tableToFlush;
-        lock.writeLock().lock();
-        try {
-            tableToFlush = new FlushTable
-                    .Builder(rows, index)
-                    .isCompactTable()
-                    .build();
-            index++;
-            pendingToCompact.put(index, rows);
-            current = new MemoryTable();
-        } finally {
-            lock.writeLock().unlock();
-        }
-        try {
-            flushQueue.put(tableToFlush);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        flusher.execute(flushingTask);
-    }
-
-    @NotNull
-    public FlushTable takeToFlush() throws InterruptedException {
-        return flushQueue.take();
-    }
-
-    /**
-     * Mark mem table as flushed and remove her from map storage of tables.
-     * @param serialNumber - index of removable table.
-     * */
-    public void flushed(final long serialNumber) {
-        lock.writeLock().lock();
-        try {
-            pendingToFlush.remove(serialNumber);
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
-    /**
-     * Compact values from all tables with current table.
-     * @param ssTables - all tables from root.
-     * */
-    public void compact(@NotNull final NavigableMap<Long, Table> ssTables) throws IOException {
-        final List<Iterator<TableRow>> iterators;
-        lock.readLock().lock();
-        try {
-            iterators = Table.combineTables(current, ssTables, LOWEST_KEY);
-        } finally {
-            lock.readLock().unlock();
-        }
-        setCompactTableToFlush(Table.transformRows(iterators));
-    }
-
-    /**
-     * Compacted.
-     * @param serialNumber - index of compacted table.
-     * */
-    public void compacted(final long serialNumber) {
-        lock.writeLock().lock();
-        try {
-            pendingToCompact.remove(serialNumber);
-        } finally {
-            lock.writeLock().unlock();
-        }
+    @Override
+    public void clear() {
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public long sizeInBytes() {
         lock.readLock().lock();
         try {
-            long sizeInBytes = current.sizeInBytes();
-            for (final var table : pendingToFlush.values()) {
-                sizeInBytes += table.sizeInBytes();
+            long sizeInBytes = 0;
+            sizeInBytes += current.sizeInBytes();
+            for (final Map.Entry<Integer, Table> entry : tableForFlush.entrySet()) {
+                sizeInBytes += entry.getValue().sizeInBytes();
             }
             return sizeInBytes;
         } finally {
@@ -210,47 +94,86 @@ public class MemoryTablePool implements Table, Closeable {
     }
 
     @Override
-    public long serialNumber() {
-        lock.readLock().lock();
-        try {
-            return index;
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    @Override
     public void close() throws IOException {
-        if (!isClosed.compareAndSet(false, true)) {
+        if (!stop.compareAndSet(false, true)) {
             return;
         }
-        FlushTable tableToFlush;
+        FlushTable table;
         lock.writeLock().lock();
         try {
-            tableToFlush = new FlushTable
-                    .Builder(current.iterator(LOWEST_KEY), index)
-                    .poisonPill()
-                    .build();
+            table = new FlushTable(current, fileIndex.get(), true);
         } finally {
             lock.writeLock().unlock();
         }
         try {
-            flushQueue.put(tableToFlush);
+            flushQueue.put(table);
         } catch (InterruptedException e) {
+            log.error("InterruptedException during dao close", e);
             Thread.currentThread().interrupt();
         }
-        flusher.execute(flushingTask);
-        stopFlushing();
     }
 
-    private void stopFlushing() {
-        flusher.shutdown();
+    void compact() {
+        if (!compacting.compareAndSet(false, true)) {
+            return;
+        }
+        FlushTable table;
+        lock.writeLock().lock();
         try {
-            if (!flusher.awaitTermination(1, TimeUnit.MINUTES)) {
-                flusher.shutdownNow();
-            }
+            table = new FlushTable(current, fileIndex.getAndAdd(1), false, true);
+            tableForFlush.put(table.getFileIndex(), table.getTable());
+            current = new MemoryTable();
+        } finally {
+            lock.writeLock().unlock();
+        }
+        try {
+            flushQueue.put(table);
         } catch (InterruptedException e) {
+            log.error("InterruptedException during dao compact", e);
             Thread.currentThread().interrupt();
+        }
+    }
+
+    void compacted() {
+        compacting.set(false);
+    }
+
+    private void enqueueFlush(@NotNull final AtomicInteger fileIndex) {
+        if (current.sizeInBytes() >= maxHeap) {
+            FlushTable table = null;
+            int index = 0;
+            lock.writeLock().lock();
+            try {
+                if (current.sizeInBytes() >= maxHeap) {
+                    index = fileIndex.getAndAdd(1);
+                    table = new FlushTable(current, index);
+                    tableForFlush.put(index, current);
+                    current = new MemoryTable();
+                }
+            } finally {
+                lock.writeLock().unlock();
+            }
+            if (table != null) {
+                try {
+                    flushQueue.put(table);
+                } catch (InterruptedException e) {
+                    log.error("InterruptedException during enqueueFlush", e);
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
+
+    FlushTable takeToFlush() throws InterruptedException {
+        return flushQueue.take();
+    }
+
+    void flushed(final int generation) {
+        lock.writeLock().lock();
+        try {
+            tableForFlush.remove(generation);
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 }

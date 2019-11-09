@@ -2,65 +2,67 @@ package ru.mail.polis.dao.igorlo;
 
 import org.jetbrains.annotations.NotNull;
 
-import javax.annotation.concurrent.ThreadSafe;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
-import java.util.NavigableMap;
+import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-@ThreadSafe
-public final class MemoryTable implements Table {
-
-    @NotNull private NavigableMap<ByteBuffer, TableRow> storage = new ConcurrentSkipListMap<>();
-    @NotNull private final AtomicLong sizeInBytes = new AtomicLong();
-    private static final long SERIAL_NUMBER = Long.MAX_VALUE;
+public class MemoryTable implements Table {
+    private final SortedMap<ByteBuffer, TableRow> memTable = new ConcurrentSkipListMap<>();
+    private final AtomicLong currentHeap = new AtomicLong(0);
 
     @NotNull
     @Override
     public Iterator<TableRow> iterator(@NotNull final ByteBuffer from) throws IOException {
-        return storage.tailMap(from).values().iterator();
+        return memTable.tailMap(from).values().iterator();
     }
 
     @Override
-    public void upsert(
-            @NotNull final ByteBuffer key,
-            @NotNull final ByteBuffer value) throws IOException {
-        final var prev = storage.put(key, TableRow.of(
-                SERIAL_NUMBER,
-                key,
-                Value.of(System.currentTimeMillis(), value)));
-        if (prev == null) {
-            sizeInBytes.addAndGet(TableRow.getSizeOfFlushedRow(key, value));
+    public void upsert(@NotNull final ByteBuffer key, @NotNull final ByteBuffer value,
+                       @NotNull final AtomicInteger fileIndex) throws IOException {
+        final TableRow previousRow = memTable.put(key, TableRow.of(fileIndex.get(), key, value, PersistentDAO.ALIVE));
+        if (previousRow == null) {
+            currentHeap.addAndGet(Integer.BYTES
+                    + (long) (key.remaining()
+                    + PersistentDAO.LINK_SIZE
+                    + Integer.BYTES * PersistentDAO.NUMBER_FIELDS_BYTEBUFFER)
+                    + (long) (value.remaining()
+                    + PersistentDAO.LINK_SIZE
+                    + Integer.BYTES * PersistentDAO.NUMBER_FIELDS_BYTEBUFFER)
+                    + Integer.BYTES);
         } else {
-            sizeInBytes.addAndGet(value.remaining());
+            currentHeap.addAndGet(value.remaining() - previousRow.getValue().remaining());
         }
     }
 
     @Override
-    public void remove(@NotNull final ByteBuffer key) throws IOException {
-        final var tombstone = Value.tombstone(System.currentTimeMillis());
-        final var prev = storage.put(key, TableRow.of(SERIAL_NUMBER, key, tombstone));
-        if (prev == null) {
-            sizeInBytes.addAndGet(TableRow.getSizeOfFlushedRow(key, tombstone.getData()));
-        } else if (!prev.getValue().isDead()){
-            sizeInBytes.addAndGet(-prev.getValue().getData().remaining());
+    public void remove(@NotNull final ByteBuffer key,
+                       @NotNull final AtomicInteger fileIndex) throws IOException {
+        final TableRow removedRow = memTable.put(key, TableRow.of(fileIndex.get(), key, PersistentDAO.TOMBSTONE, PersistentDAO.DEAD));
+        if (removedRow == null) {
+            currentHeap.addAndGet(Integer.BYTES
+                    + (long) (key.remaining()
+                    + PersistentDAO.LINK_SIZE
+                    + Integer.BYTES * PersistentDAO.NUMBER_FIELDS_BYTEBUFFER)
+                    + (long) (PersistentDAO.LINK_SIZE
+                    + Integer.BYTES * PersistentDAO.NUMBER_FIELDS_BYTEBUFFER)
+                    + Integer.BYTES);
+        } else if (!removedRow.isDead()) {
+            currentHeap.addAndGet(-removedRow.getValue().remaining());
         }
     }
 
+    @Override
     public void clear() {
-        storage = new ConcurrentSkipListMap<>();
-        sizeInBytes.set(0L);
-    }
-
-    @Override
-    public long serialNumber() {
-        return SERIAL_NUMBER;
+        memTable.clear();
+        currentHeap.set(0);
     }
 
     @Override
     public long sizeInBytes() {
-        return sizeInBytes.get();
+        return currentHeap.get();
     }
 }
