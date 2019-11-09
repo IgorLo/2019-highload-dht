@@ -41,7 +41,10 @@ public class MemoryTable implements Table {
     @Override
     public void remove(@NotNull final ByteBuffer key,
                        @NotNull final AtomicInteger fileIndex) throws IOException {
-        final TableRow removedRow = memTable.put(key, TableRow.of(fileIndex.get(), key, PersistentDAO.TOMBSTONE, PersistentDAO.DEAD));
+        final TableRow removedRow = memTable.put(
+                key,
+                TableRow.of(fileIndex.get(), key, PersistentDAO.TOMBSTONE, PersistentDAO.DEAD)
+        );
         if (removedRow == null) {
             currentHeap.addAndGet(Integer.BYTES
                     + (long) (key.remaining()
