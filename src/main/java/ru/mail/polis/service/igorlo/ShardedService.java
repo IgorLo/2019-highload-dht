@@ -122,7 +122,8 @@ public class ShardedService<T> extends HttpServer implements Service {
      * @throws IOException where send in session.
      */
     @Path("/v0/status")
-    public void entity(@NotNull final Request request, @NotNull final HttpSession session) throws IOException {
+    public void entity(@NotNull final Request request,
+                       @NotNull final HttpSession session) throws IOException {
         session.sendResponse(new Response(Response.OK, Response.EMPTY));
     }
 
@@ -166,7 +167,8 @@ public class ShardedService<T> extends HttpServer implements Service {
     }
 
     @Override
-    public void handleDefault(@NotNull final Request request, @NotNull final HttpSession session) throws IOException {
+    public void handleDefault(@NotNull final Request request,
+                              @NotNull final HttpSession session) throws IOException {
         session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
     }
 }

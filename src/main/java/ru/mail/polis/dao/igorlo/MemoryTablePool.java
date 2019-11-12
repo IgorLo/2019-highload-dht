@@ -75,7 +75,7 @@ public class MemoryTablePool implements Table, Closeable {
 
     @Override
     public void clear() {
-        throw new UnsupportedOperationException();
+        throw new UnsupportedOperationException("This type of table does not support this operation");
     }
 
     @Override

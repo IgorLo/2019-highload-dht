@@ -100,7 +100,8 @@ public class PersistentDAO implements ExtendedDAO {
      * @param rootDir the folder in which files will be written and read
      * @throws IOException if an I/O error is thrown by a File walker
      */
-    public PersistentDAO(final long maxHeap, @NotNull final File rootDir) throws IOException {
+    public PersistentDAO(final long maxHeap,
+                         @NotNull final File rootDir) throws IOException {
         this.rootDir = rootDir;
         this.tables = new ConcurrentSkipListMap<>();
         final EnumSet<FileVisitOption> options = EnumSet.of(FileVisitOption.FOLLOW_LINKS);
@@ -133,11 +134,13 @@ public class PersistentDAO implements ExtendedDAO {
     }
 
     @Override
-    public void upsert(@NotNull final ByteBuffer key, @NotNull final ByteBuffer value) throws IOException {
+    public void upsert(@NotNull final ByteBuffer key,
+                       @NotNull final ByteBuffer value) throws IOException {
         memoryTable.upsert(key, value, fileIndex);
     }
 
-    private void dump(@NotNull final Table table, final int fileIndex) throws IOException {
+    private void dump(@NotNull final Table table,
+                      final int fileIndex) throws IOException {
         final String fileTableName = PREFIX + fileIndex + SUFFIX;
         final File file = new File(rootDir, fileTableName);
         Utilities.write(file, table.iterator(LEAST_KEY));

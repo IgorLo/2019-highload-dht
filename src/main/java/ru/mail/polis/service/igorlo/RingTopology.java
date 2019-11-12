@@ -43,7 +43,8 @@ public class RingTopology implements Topology<String> {
     }
 
     @Override
-    public Set<String> primaryFor(@NotNull final ByteBuffer key, @NotNull final Replicas replicas) {
+    public Set<String> primaryFor(@NotNull final ByteBuffer key,
+                                  @NotNull final Replicas replicas) {
         final Set<String> result = new HashSet<>();
         int startI = binSearch(leftBorder, key.hashCode());
         while (result.size() < replicas.getFrom()) {

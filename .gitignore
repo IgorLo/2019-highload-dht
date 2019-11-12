@@ -13,7 +13,6 @@
 !settings.gradle
 !*.lua
 !*.sh
-#!*.svg
 !scripts/output/*.txt
 !scripts/output/*.svg
 !gradle/wrapper/*

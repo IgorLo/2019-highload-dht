@@ -8,15 +8,21 @@ class FlushTable {
     private final boolean poisonPill;
     private final boolean compacting;
 
-    FlushTable(@NotNull final Table table, final int fileIndex) {
+    FlushTable(@NotNull final Table table,
+               final int fileIndex) {
         this(table, fileIndex, false);
     }
 
-    FlushTable(@NotNull final Table table, final int fileIndex, final boolean poisonPill) {
+    FlushTable(@NotNull final Table table,
+               final int fileIndex,
+               final boolean poisonPill) {
         this(table, fileIndex, poisonPill, false);
     }
 
-    FlushTable(@NotNull final Table table, final int fileIndex, final boolean poisonPill, final boolean compacting) {
+    FlushTable(@NotNull final Table table,
+               final int fileIndex,
+               final boolean poisonPill,
+               final boolean compacting) {
         this.table = table;
         this.fileIndex = fileIndex;
         this.poisonPill = poisonPill;

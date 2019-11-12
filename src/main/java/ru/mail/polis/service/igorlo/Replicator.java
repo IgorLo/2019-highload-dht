@@ -32,8 +32,10 @@ class Replicator<T> {
     private final Map<T, HttpClient> pool;
     private final ExtendedDAO dao;
 
-    Replicator(@NotNull final Topology<T> topology, @NotNull final Executor executor,
-               @NotNull final Map<T, HttpClient> pool, @NotNull final ExtendedDAO dao) {
+    Replicator(@NotNull final Topology<T> topology,
+               @NotNull final Executor executor,
+               @NotNull final Map<T, HttpClient> pool,
+               @NotNull final ExtendedDAO dao) {
         this.executor = executor;
         this.topology = topology;
         this.pool = pool;
@@ -72,7 +74,8 @@ class Replicator<T> {
         }
     }
 
-    private Response proxy(@NotNull final T node, @NotNull final Request rf) {
+    private Response proxy(@NotNull final T node,
+                           @NotNull final Request rf) {
         assert !topology.isMe(node);
         try {
             return pool.get(node).invoke(rf);
@@ -93,8 +96,11 @@ class Replicator<T> {
         });
     }
 
-    void executeGet(@NotNull final HttpSession session, @NotNull final Request request,
-                    @NotNull final ByteBuffer key, final boolean isProxy, @NotNull final Replicas rf) {
+    void executeGet(@NotNull final HttpSession session,
+                    @NotNull final Request request,
+                    @NotNull final ByteBuffer key,
+                    final boolean isProxy,
+                    @NotNull final Replicas rf) {
         if (isProxy) {
             executeAsync(session, () -> get(key));
             return;
@@ -118,8 +124,10 @@ class Replicator<T> {
         });
     }
 
-    private List<Response> executeReplication(@NotNull final Action localAction, @NotNull final Request request,
-                                              @NotNull final ByteBuffer key, @NotNull final Replicas rf) {
+    private List<Response> executeReplication(@NotNull final Action localAction,
+                                              @NotNull final Request request,
+                                              @NotNull final ByteBuffer key,
+                                              @NotNull final Replicas rf) {
         request.addHeader(ServiceUtilities.PROXY_HEADER);
         final Set<T> nodes = topology.primaryFor(key, rf);
         final List<Response> result = new ArrayList<>(nodes.size());
@@ -133,8 +141,11 @@ class Replicator<T> {
         return result;
     }
 
-    void executePut(@NotNull final HttpSession session, @NotNull final Request request,
-                    @NotNull final ByteBuffer key, final boolean isProxy, @NotNull final Replicas rf) {
+    void executePut(@NotNull final HttpSession session,
+                    @NotNull final Request request,
+                    @NotNull final ByteBuffer key,
+                    final boolean isProxy,
+                    @NotNull final Replicas rf) {
         if (isProxy) {
             executeAsync(session, () -> put(request, key));
             return;
@@ -148,8 +159,10 @@ class Replicator<T> {
         });
     }
 
-    private void acceptReplicas(final long countAck, @NotNull final HttpSession session,
-                                @NotNull final Response successfulResponse, @NotNull final Response faildReplicas,
+    private void acceptReplicas(final long countAck,
+                                @NotNull final HttpSession session,
+                                @NotNull final Response successfulResponse,
+                                @NotNull final Response faildReplicas,
                                 @NotNull final Replicas rf) {
         try {
             if (countAck >= rf.getAck()) {
@@ -163,8 +176,11 @@ class Replicator<T> {
         }
     }
 
-    void executeDelete(@NotNull final HttpSession session, @NotNull final Request request,
-                       @NotNull final ByteBuffer key, final boolean isProxy, @NotNull final Replicas rf) {
+    void executeDelete(@NotNull final HttpSession session,
+                       @NotNull final Request request,
+                       @NotNull final ByteBuffer key,
+                       final boolean isProxy,
+                       @NotNull final Replicas rf) {
         if (isProxy) {
             executeAsync(session, () -> delete(key));
             return;
@@ -178,7 +194,8 @@ class Replicator<T> {
         });
     }
 
-    private void sendError(@NotNull final HttpSession session, @NotNull final Exception e) {
+    private void sendError(@NotNull final HttpSession session,
+                           @NotNull final Exception e) {
         try {
             session.sendError(Response.INTERNAL_ERROR, "");
         } catch (IOException ex) {

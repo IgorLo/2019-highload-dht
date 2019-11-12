@@ -21,7 +21,8 @@ public class MemoryTable implements Table {
     }
 
     @Override
-    public void upsert(@NotNull final ByteBuffer key, @NotNull final ByteBuffer value,
+    public void upsert(@NotNull final ByteBuffer key,
+                       @NotNull final ByteBuffer value,
                        @NotNull final AtomicInteger fileIndex) throws IOException {
         final TableRow previousRow = memTable.put(key, TableRow.of(fileIndex.get(), key, value, PersistentDAO.ALIVE));
         if (previousRow == null) {

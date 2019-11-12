@@ -66,7 +66,7 @@ public final class ServiceFactory {
                 "http://localhost:" + port,
                 3);
         final Executor executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
-                new ThreadFactoryBuilder().setNameFormat("asyncWorker").build());
+                new ThreadFactoryBuilder().setNameFormat("asyncWorker-%d").build());
         return new ShardedService<>(port, dao, executor, ring);
     }
 }
