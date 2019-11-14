@@ -13,15 +13,10 @@ import ru.mail.polis.dao.igorlo.ExtendedDAO;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.Set;
 
 class Replicator<T> {
     private static final String NOT_ENOUGH_REPLICAS = "504 Not Enough Replicas";
@@ -130,7 +125,7 @@ class Replicator<T> {
                                               @NotNull final Replicas rf) {
         request.addHeader(ServiceUtilities.PROXY_HEADER);
         final Set<T> nodes = topology.primaryFor(key, rf);
-        final List<Response> result = new ArrayList<>(nodes.size());
+        final List<Response> result = new ArrayList<>();
         for (final T node : nodes) {
             if (topology.isMe(node)) {
                 result.add(localAction.action());
@@ -152,11 +147,20 @@ class Replicator<T> {
         }
         executor.execute(() -> {
             final List<Response> result = executeReplication(() -> put(request, key), request, key, rf);
-            final long countPutKeys = result.stream().filter(node -> node.getHeaders()[0].equals(Response.CREATED))
+            final long countPutKeys = result.stream().filter(node -> containsHeader(node, Response.CREATED))
                     .count();
             acceptReplicas(countPutKeys, session, new Response(Response.CREATED, Response.EMPTY),
                     new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY), rf);
         });
+    }
+
+    private boolean containsHeader(Response response, String header) {
+        for (String current: response.getHeaders()){
+            if (current != null && current.equals(header)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void acceptReplicas(final long countAck,
@@ -187,7 +191,7 @@ class Replicator<T> {
         }
         executor.execute(() -> {
             final List<Response> result = executeReplication(() -> delete(key), request, key, rf);
-            final long countDeleted = result.stream().filter(node -> node.getHeaders()[0].equals(Response.ACCEPTED))
+            final long countDeleted = result.stream().filter(node -> containsHeader(node, Response.ACCEPTED))
                     .count();
             acceptReplicas(countDeleted, session, new Response(Response.ACCEPTED, Response.EMPTY),
                     new Response(NOT_ENOUGH_REPLICAS, Response.EMPTY), rf);

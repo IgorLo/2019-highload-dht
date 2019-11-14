@@ -91,7 +91,13 @@ public class ShardedService<T> extends HttpServer implements Service {
             return;
         }
         final boolean isProxy = ServiceUtilities.isProxied(request);
-        final Replicas rf = isProxy || replicas == null ? quorum : Replicas.parse(replicas);
+        final Replicas rf;
+        try {
+            rf = isProxy || replicas == null ? quorum : Replicas.parse(replicas);
+        } catch (IllegalArgumentException e){
+            session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
+            return;
+        }
         if (rf.getAck() > rf.getFrom() || rf.getAck() <= 0) {
             session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;

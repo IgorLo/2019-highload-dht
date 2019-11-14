@@ -22,10 +22,23 @@ public final class Replicas {
      * @return Replicas.
      */
     public static Replicas parse(@NotNull final String replicas) {
-        final int iSeparator = replicas.indexOf('/');
-        final String ask = replicas.substring(0, iSeparator);
-        final String from = replicas.substring(iSeparator + 1);
-        return new Replicas(Integer.parseInt(ask), Integer.parseInt(from));
+        if (!isCorrect(replicas)){
+            throw new IllegalArgumentException("Invalid request for ack/from");
+        }
+        final int ackInt;
+        final int fromInt;
+        try {
+            final int iSeparator = replicas.indexOf('/');
+            ackInt = Integer.parseInt(replicas.substring(0, iSeparator));
+            fromInt = Integer.parseInt(replicas.substring(iSeparator + 1));
+        } catch (NumberFormatException e){
+            throw new NumberFormatException("Wrong number format for ack/from");
+        }
+        return new Replicas(ackInt, fromInt);
+    }
+
+    private static boolean isCorrect(String replicas) {
+        return !(replicas.isEmpty() || !replicas.contains("/") || (replicas.split("/").length != 2));
     }
 
     public int getAck() {
