@@ -27,14 +27,9 @@ public final class Replicas {
         }
         final int ackInt;
         final int fromInt;
-        try {
-            final int iSeparator = replicas.indexOf('/');
-            ackInt = Integer.parseInt(replicas.substring(0, iSeparator));
-            fromInt = Integer.parseInt(replicas.substring(iSeparator + 1));
-        } catch (NumberFormatException e) {
-            e.printStackTrace();
-            throw new NumberFormatException("Wrong number format for ack/from");
-        }
+        final int iSeparator = replicas.indexOf('/');
+        ackInt = Integer.parseInt(replicas.substring(0, iSeparator));
+        fromInt = Integer.parseInt(replicas.substring(iSeparator + 1));
         return new Replicas(ackInt, fromInt);
     }
 
