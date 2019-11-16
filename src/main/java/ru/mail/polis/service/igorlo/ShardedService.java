@@ -6,10 +6,8 @@ import one.nio.http.Param;
 import one.nio.http.Path;
 import one.nio.http.Request;
 import one.nio.http.Response;
-import one.nio.http.HttpClient;
 import one.nio.http.HttpServer;
 import one.nio.http.HttpServerConfig;
-import one.nio.net.ConnectionString;
 import one.nio.net.Socket;
 import one.nio.server.AcceptorConfig;
 import one.nio.server.RejectedSessionException;
@@ -18,21 +16,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
-import ru.mail.polis.service.Service;
 import ru.mail.polis.dao.igorlo.ExtendedDAO;
+import ru.mail.polis.service.Service;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.concurrent.Executor;
 
-public class ShardedService<T> extends HttpServer implements Service {
+public class ShardedService extends HttpServer implements Service {
     private static final Logger log = LoggerFactory.getLogger(ShardedService.class);
     private final ExtendedDAO dao;
     private final Replicas quorum;
-    private final Replicator<T> replicator;
+    private final Replicator replicator;
 
     /**
      * Async sharded Http Rest Service.
@@ -45,19 +41,11 @@ public class ShardedService<T> extends HttpServer implements Service {
     public ShardedService(final int port,
                           @NotNull final DAO dao,
                           @NotNull final Executor executor,
-                          @NotNull final Topology<T> nodes) throws IOException {
+                          @NotNull final Topology<Address> nodes) throws IOException {
         super(getConfig(port));
         this.dao = (ExtendedDAO) dao;
-        final Map<T, HttpClient> pool = new HashMap<>();
         this.quorum = Replicas.quorum(nodes.size());
-        for (final T node : nodes.all()) {
-            if (nodes.isMe(node)) {
-                continue;
-            }
-            assert !pool.containsKey(node);
-            pool.put(node, new HttpClient(new ConnectionString(node + "?timeout=100")));
-        }
-        replicator = new Replicator<T>(nodes, executor, pool, this.dao);
+        this.replicator = new AsyncReplicator(executor, nodes, this.dao);
     }
 
     private static HttpServerConfig getConfig(final int port) {
@@ -91,13 +79,7 @@ public class ShardedService<T> extends HttpServer implements Service {
             return;
         }
         final boolean isProxy = ServiceUtilities.isProxied(request);
-        final Replicas rf;
-        try {
-            rf = isProxy || replicas == null ? quorum : Replicas.parse(replicas);
-        } catch (IllegalArgumentException e){
-            session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
-            return;
-        }
+        final Replicas rf = isProxy || replicas == null ? quorum : Replicas.parse(replicas);
         if (rf.getAck() > rf.getFrom() || rf.getAck() <= 0) {
             session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             return;
@@ -128,8 +110,7 @@ public class ShardedService<T> extends HttpServer implements Service {
      * @throws IOException where send in session.
      */
     @Path("/v0/status")
-    public void entity(@NotNull final Request request,
-                       @NotNull final HttpSession session) throws IOException {
+    public void entity(@NotNull final Request request, @NotNull final HttpSession session) throws IOException {
         session.sendResponse(new Response(Response.OK, Response.EMPTY));
     }
 
@@ -173,8 +154,7 @@ public class ShardedService<T> extends HttpServer implements Service {
     }
 
     @Override
-    public void handleDefault(@NotNull final Request request,
-                              @NotNull final HttpSession session) throws IOException {
+    public void handleDefault(@NotNull final Request request, @NotNull final HttpSession session) throws IOException {
         session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
     }
 }

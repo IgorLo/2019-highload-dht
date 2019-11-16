@@ -25,6 +25,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.jetbrains.annotations.NotNull;
 
 import ru.mail.polis.dao.DAO;
+import ru.mail.polis.service.igorlo.Address;
 import ru.mail.polis.service.igorlo.RingTopology;
 import ru.mail.polis.service.igorlo.ShardedService;
 import ru.mail.polis.service.igorlo.Topology;
@@ -62,11 +63,11 @@ public final class ServiceFactory {
             throw new IllegalArgumentException("Port out of range");
         }
 
-        final Topology<String> ring = new RingTopology(topology,
+        final Topology<Address> ring = new RingTopology(topology,
                 "http://localhost:" + port,
                 3);
         final Executor executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
-                new ThreadFactoryBuilder().setNameFormat("asyncWorker-%d").build());
-        return new ShardedService<>(port, dao, executor, ring);
+                new ThreadFactoryBuilder().setNameFormat("asyncWorker").build());
+        return new ShardedService(port, dao, executor, ring);
     }
 }

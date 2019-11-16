@@ -20,6 +20,7 @@
 !testTesults/stage_3/*
 !testTesults/stage_4/*
 !testTesults/stage_5/*
+!testTesults/stage_6/*
 !testTesults/reports/*
 
 # ...even if they are in subdirectories
