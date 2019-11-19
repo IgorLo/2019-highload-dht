@@ -54,6 +54,6 @@ public final class DAOFactory {
             throw new IllegalArgumentException("Path is not a directory: " + data);
         }
 
-        return new PersistentDAO(MAX_HEAP/64, data);
+        return new PersistentDAO(MAX_HEAP / 64, data);
     }
 }
